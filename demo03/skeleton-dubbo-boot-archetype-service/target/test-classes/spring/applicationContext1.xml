@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:cache="http://www.springframework.org/schema/cache"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd http://www.springframework.org/schema/cache http://www.springframework.org/schema/cache/spring-cache.xsd">
+
+
+
+    <context:component-scan base-package="com.chinaredstar"/>
+    <!-- 激活利用注解进行装配 -->
+    <context:annotation-config />
+
+    <bean id="propertyConfigurer"
+          class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="order" value="1"/>
+        <property name="ignoreUnresolvablePlaceholders" value="true"/>
+        <property name="locations">
+            <list>
+                <value>classpath:mysql.properties</value>
+                <value>classpath:redis.properties</value>
+            </list>
+        </property>
+    </bean>
+
+
+
+    <aop:aspectj-autoproxy proxy-target-class="true"/>
+
+
+    <bean id="master" class="org.apache.tomcat.jdbc.pool.DataSource">
+        <property name="driverClassName" value="${jdbc.mysql.Driver}"></property>
+        <property name="url" value="${master.connection}"></property>
+        <property name="username" value="${master.username}"></property>
+        <property name="password" value="${master.password}"></property>
+
+        <!--公共配置属性-->
+        <property name="maxActive" value="${tomcat.jdbc.pool.maxActive}"></property>
+        <property name="initialSize" value="${tomcat.jdbc.pool.initialSize}"></property>
+        <property name="minIdle" value="${tomcat.jdbc.pool.minIdle}"></property>
+        <property name="jdbcInterceptors" value="${tomcat.jdbc.pool.jdbcInterceptors}"></property>
+
+
+        <property name="testWhileIdle" value="true"></property>
+        <property name="testOnBorrow" value="true"></property>
+        <property name="validationQuery" value="select 1"></property>
+        <property name="testOnReturn" value="false"></property>
+        <property name="validationInterval" value="30000"></property>
+        <property name="timeBetweenEvictionRunsMillis" value="5000"></property>
+        <property name="maxWait" value="15000"></property>
+        <property name="removeAbandoned" value="true"></property>
+        <property name="removeAbandonedTimeout" value="60"></property>
+        <property name="logAbandoned" value="false"></property>
+        <property name="minEvictableIdleTimeMillis" value="30"></property>
+        <property name="jmxEnabled" value="true"/>
+        <!--这个名字不能随便更改,因为它对应着我们perseus中mbean的name-->
+        <property name="name" value="jdbcPool"/>
+    </bean>
+
+
+    <bean id="slave" class="org.apache.tomcat.jdbc.pool.DataSource">
+        <property name="driverClassName" value="${jdbc.mysql.Driver}"></property>
+        <property name="url" value="${slave.connection}"></property>
+        <property name="username" value="${slave.username}"></property>
+        <property name="password" value="${slave.password}"></property>
+
+        <!--公共配置属性-->
+        <property name="maxActive" value="${tomcat.jdbc.pool.maxActive}"></property>
+        <property name="initialSize" value="${tomcat.jdbc.pool.initialSize}"></property>
+        <property name="minIdle" value="${tomcat.jdbc.pool.minIdle}"></property>
+        <property name="jdbcInterceptors" value="${tomcat.jdbc.pool.jdbcInterceptors}"></property>
+
+        <property name="testWhileIdle" value="true"></property>
+        <property name="testOnBorrow" value="true"></property>
+        <property name="validationQuery" value="select 1"></property>
+        <property name="testOnReturn" value="false"></property>
+        <property name="validationInterval" value="30000"></property>
+        <property name="timeBetweenEvictionRunsMillis" value="5000"></property>
+        <property name="maxWait" value="15000"></property>
+        <property name="removeAbandoned" value="true"></property>
+        <property name="removeAbandonedTimeout" value="60"></property>
+        <property name="logAbandoned" value="false"></property>
+        <property name="minEvictableIdleTimeMillis" value="30"></property>
+        <property name="jmxEnabled" value="true"/>
+        <!--这个名字不能随便更改,因为它对应着我们perseus中mbean的name-->
+        <property name="name" value="jdbcPool"/>
+    </bean>
+
+    <bean id="dataSource" class="com.chinaredstar.perseus.db.DynamicDataSource">
+        <property name="master" ref="master"/>
+        <property name="slaves">
+            <list>
+                <ref bean="slave"/>
+            </list>
+        </property>
+    </bean>
+
+    <!-- ibatis3 工厂类 -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="configLocation" value="classpath:sqlMapConfig.xml"/>
+        <property name="typeAliasesPackage" value="com.chinaredstar.jdbc.po"/>
+    </bean>
+
+    <bean class="com.chinaredstar.perseus.db.MapperScannerConfigurer">
+        <property name="basePackage" value="com.chinaredstar.jdbc.dao"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+
+    <!-- 定义单个jdbc数据源的事务管理器 -->
+    <bean id="transactionManager"
+          class="com.chinaredstar.perseus.db.DynamicDataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+    <!-- 以 @Transactional 标注来定义事务,默认事务管理使用transactionManager  -->
+    <tx:annotation-driven transaction-manager="transactionManager"
+                          proxy-target-class="true"/>
+
+    <!--redis-->
+    <cache:annotation-driven cache-manager="cacheManager"/>
+
+    <bean id="sessionRedisSentinelConfiguration"
+          class="org.springframework.data.redis.connection.RedisSentinelConfiguration">
+        <property name="master">
+            <bean class="org.springframework.data.redis.connection.RedisNode">
+                <property name="name" value="mymaster"/>
+            </bean>
+        </property>
+        <property name="sentinels">
+            <set>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${session.redis.sentinels.host1}"/>
+                    <constructor-arg name="port" value="${session.redis.sentinels.port1}"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${session.redis.sentinels.host2}"/>
+                    <constructor-arg name="port" value="${session.redis.sentinels.port2}"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${session.redis.sentinels.host3}"/>
+                    <constructor-arg name="port" value="${session.redis.sentinels.port3}"/>
+                </bean>
+            </set>
+        </property>
+    </bean>
+
+
+    <bean id="cacheRedisSentinelConfiguration"
+          class="org.springframework.data.redis.connection.RedisSentinelConfiguration">
+        <property name="master">
+            <bean class="org.springframework.data.redis.connection.RedisNode">
+                <property name="name" value="mymaster"/>
+            </bean>
+        </property>
+        <property name="sentinels">
+            <set>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${cache.redis.sentinels.host1}"/>
+                    <constructor-arg name="port" value="${cache.redis.sentinels.port1}"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${cache.redis.sentinels.host2}"/>
+                    <constructor-arg name="port" value="${cache.redis.sentinels.port2}"/>
+                </bean>
+                <bean class="org.springframework.data.redis.connection.RedisNode">
+                    <constructor-arg name="host" value="${cache.redis.sentinels.host3}"/>
+                    <constructor-arg name="port" value="${cache.redis.sentinels.port3}"/>
+                </bean>
+            </set>
+        </property>
+    </bean>
+
+    <!--session的database为0,并且该bean的ID不能随便改动,因为RedisHttpSessionConfiguration2依赖这个ID-->
+    <bean id="sessionJedisConnectionFactory"
+          class="org.springframework.data.redis.connection.jedis.JedisConnectionFactory"
+          p:usePool="true" p:database="0">
+        <constructor-arg name="sentinelConfig" ref="sessionRedisSentinelConfiguration"/>
+    </bean>
+    <!--database根据自己的业务线来设定-->
+    <bean id="cacheJedisConnectionFactory"
+          class="org.springframework.data.redis.connection.jedis.JedisConnectionFactory"
+          p:usePool="true" p:database="1">
+        <constructor-arg name="sentinelConfig" ref="cacheRedisSentinelConfiguration"/>
+    </bean>
+
+    <bean id="cacheRedisTemplate" class="org.springframework.data.redis.core.RedisTemplate"
+          p:connectionFactory-ref="cacheJedisConnectionFactory">
+        <property name="keySerializer">
+            <bean class="org.springframework.data.redis.serializer.StringRedisSerializer"/>
+        </property>
+        <property name="hashKeySerializer">
+            <bean class="org.springframework.data.redis.serializer.StringRedisSerializer"/>
+        </property>
+    </bean>
+    <!--缓存时长根据自己的业务需求来设定-->
+    <bean id="cacheManager" class="org.springframework.data.redis.cache.RedisCacheManager">
+        <constructor-arg ref="cacheRedisTemplate"/>
+        <property name="defaultExpiration" value="300"/>
+    </bean>
+</beans>
